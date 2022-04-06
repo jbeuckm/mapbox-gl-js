@@ -1,5 +1,12 @@
 // NOTE: This prelude is injected in the fragment shader only
 
+#ifdef FOG
+uniform mediump vec4 u_fog_color;
+uniform mediump vec2 u_fog_range;
+uniform mediump float u_fog_horizon_blend;
+varying vec3 v_fog_pos;
+#endif
+
 highp vec3 hash(highp vec2 p) {
     highp vec3 p3 = fract(p.xyx * vec3(443.8975, 397.2973, 491.1871));
     p3 += dot(p3, p3.yxz + 19.19);
