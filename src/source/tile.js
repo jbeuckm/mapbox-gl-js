@@ -1,73 +1,87 @@
 // @flow
 
-import {uniqueId, parseCacheControl} from '../util/util.js';
-import {deserialize as deserializeBucket} from '../data/bucket.js';
-import FeatureIndex from '../data/feature_index.js';
-import GeoJSONFeature from '../util/vectortile_to_geojson.js';
-import featureFilter from '../style-spec/feature_filter/index.js';
-import SymbolBucket from '../data/bucket/symbol_bucket.js';
-import {CollisionBoxArray, TileBoundsArray, PosArray, TriangleIndexArray, LineStripIndexArray, PosGlobeExtArray} from '../data/array_types.js';
-import Texture from '../render/texture.js';
-import browser from '../util/browser.js';
-import {Debug} from '../util/debug.js';
-import toEvaluationFeature from '../data/evaluation_feature.js';
-import EvaluationParameters from '../style/evaluation_parameters.js';
-import SourceFeatureState from '../source/source_state.js';
-import {lazyLoadRTLTextPlugin} from './rtl_text_plugin.js';
-import {TileSpaceDebugBuffer} from '../data/debug_viz.js';
-import Color from '../style-spec/util/color.js';
-import loadGeometry from '../data/load_geometry.js';
-import earcut from 'earcut';
-import getTileMesh from './tile_mesh.js';
-import tileTransform from '../geo/projection/tile_transform.js';
+import { uniqueId, parseCacheControl } from "../util/util.js";
+import { deserialize as deserializeBucket } from "../data/bucket.js";
+import FeatureIndex from "../data/feature_index.js";
+import GeoJSONFeature from "../util/vectortile_to_geojson.js";
+import featureFilter from "../style-spec/feature_filter/index.js";
+import SymbolBucket from "../data/bucket/symbol_bucket.js";
+import {
+    CollisionBoxArray,
+    TileBoundsArray,
+    PosArray,
+    TriangleIndexArray,
+    LineStripIndexArray,
+    PosGlobeExtArray,
+} from "../data/array_types.js";
+import Texture from "../render/texture.js";
+import browser from "../util/browser.js";
+import { Debug } from "../util/debug.js";
+import toEvaluationFeature from "../data/evaluation_feature.js";
+import EvaluationParameters from "../style/evaluation_parameters.js";
+import SourceFeatureState from "../source/source_state.js";
+import { lazyLoadRTLTextPlugin } from "./rtl_text_plugin.js";
+import { TileSpaceDebugBuffer } from "../data/debug_viz.js";
+import Color from "../style-spec/util/color.js";
+import loadGeometry from "../data/load_geometry.js";
+import earcut from "earcut";
+import getTileMesh from "./tile_mesh.js";
+import tileTransform from "../geo/projection/tile_transform.js";
 
-import boundsAttributes from '../data/bounds_attributes.js';
-import posAttributes, {posAttributesGlobeExt} from '../data/pos_attributes.js';
+import boundsAttributes from "../data/bounds_attributes.js";
+import posAttributes, {
+    posAttributesGlobeExt,
+} from "../data/pos_attributes.js";
 
-import EXTENT from '../data/extent.js';
-import Point from '@mapbox/point-geometry';
-import SegmentVector from '../data/segment.js';
+import EXTENT from "../data/extent.js";
+import Point from "@mapbox/point-geometry";
+import SegmentVector from "../data/segment.js";
 
 const CLOCK_SKEW_RETRY_TIMEOUT = 30000;
 
-import type {Bucket} from '../data/bucket.js';
-import FillBucket from '../data/bucket/fill_bucket.js';
-import LineBucket from '../data/bucket/line_bucket.js';
-import type StyleLayer from '../style/style_layer.js';
-import type {WorkerTileResult} from './worker_source.js';
-import type Actor from '../util/actor.js';
-import type DEMData from '../data/dem_data.js';
-import type {AlphaImage, SpritePositions} from '../util/image.js';
-import type ImageAtlas from '../render/image_atlas.js';
-import type LineAtlas from '../render/line_atlas.js';
-import type ImageManager from '../render/image_manager.js';
-import type Context from '../gl/context.js';
-import type {CanonicalTileID, OverscaledTileID} from './tile_id.js';
-import type Framebuffer from '../gl/framebuffer.js';
-import type Transform from '../geo/transform.js';
-import type {LayerFeatureStates} from './source_state.js';
-import type {Cancelable} from '../types/cancelable.js';
-import type {FilterSpecification} from '../style-spec/types.js';
-import type {TilespaceQueryGeometry} from '../style/query_geometry.js';
-import type VertexBuffer from '../gl/vertex_buffer.js';
-import type IndexBuffer from '../gl/index_buffer.js';
-import type Projection from '../geo/projection/projection.js';
-import type {TileTransform} from '../geo/projection/tile_transform.js';
-import type {QueryResult} from '../data/feature_index.js';
-import type Painter from '../render/painter.js';
-import type {QueryFeature} from '../util/vectortile_to_geojson.js';
-import {globeTileBounds,  globeNormalizeECEF, tileCoordToECEF} from '../geo/projection/globe_util.js';
-import {vec3} from 'gl-matrix';
-import type {TextureImage} from '../render/texture.js';
+import type { Bucket } from "../data/bucket.js";
+import FillBucket from "../data/bucket/fill_bucket.js";
+import LineBucket from "../data/bucket/line_bucket.js";
+import type StyleLayer from "../style/style_layer.js";
+import type { WorkerTileResult } from "./worker_source.js";
+import type Actor from "../util/actor.js";
+import type DEMData from "../data/dem_data.js";
+import type { AlphaImage, SpritePositions } from "../util/image.js";
+import type ImageAtlas from "../render/image_atlas.js";
+import type LineAtlas from "../render/line_atlas.js";
+import type ImageManager from "../render/image_manager.js";
+import type Context from "../gl/context.js";
+import type { CanonicalTileID, OverscaledTileID } from "./tile_id.js";
+import type Framebuffer from "../gl/framebuffer.js";
+import type Transform from "../geo/transform.js";
+import type { LayerFeatureStates } from "./source_state.js";
+import type { Cancelable } from "../types/cancelable.js";
+import type { FilterSpecification } from "../style-spec/types.js";
+import type { TilespaceQueryGeometry } from "../style/query_geometry.js";
+import type VertexBuffer from "../gl/vertex_buffer.js";
+import type IndexBuffer from "../gl/index_buffer.js";
+import type Projection from "../geo/projection/projection.js";
+import type { TileTransform } from "../geo/projection/tile_transform.js";
+import type { QueryResult } from "../data/feature_index.js";
+import type Painter from "../render/painter.js";
+import type { QueryFeature } from "../util/vectortile_to_geojson.js";
+import {
+    globeTileBounds,
+    globeNormalizeECEF,
+    tileCoordToECEF,
+} from "../geo/projection/globe_util.js";
+import { vec3 } from "gl-matrix";
+import type { TextureImage } from "../render/texture.js";
 
 export type TileState =
-    | 'loading'   // Tile data is in the process of loading.
-    | 'loaded'    // Tile data has been loaded. Tile can be rendered.
-    | 'reloading' // Tile data has been loaded and is being updated. Tile can be rendered.
-    | 'unloaded'  // Tile data has been deleted.
-    | 'errored'   // Tile data was not loaded because of an error.
-    | 'expired';  /* Tile data was previously loaded, but has expired per its
-                   * HTTP headers and is in the process of refreshing. */
+    | "loading" // Tile data is in the process of loading.
+    | "loaded" // Tile data has been loaded. Tile can be rendered.
+    | "reloading" // Tile data has been loaded and is being updated. Tile can be rendered.
+    | "unloaded" // Tile data has been deleted.
+    | "errored" // Tile data was not loaded because of an error.
+    | "expired";
+/* Tile data was previously loaded, but has expired per its
+ * HTTP headers and is in the process of refreshing. */
 
 // a tile bounds outline used for getting reprojected tile geometry in non-mercator projections
 const BOUNDS_FEATURE = (() => {
@@ -75,14 +89,16 @@ const BOUNDS_FEATURE = (() => {
         type: 2,
         extent: EXTENT,
         loadGeometry() {
-            return [[
-                new Point(0, 0),
-                new Point(EXTENT + 1, 0),
-                new Point(EXTENT + 1, EXTENT + 1),
-                new Point(0, EXTENT + 1),
-                new Point(0, 0)
-            ]];
-        }
+            return [
+                [
+                    new Point(0, 0),
+                    new Point(EXTENT + 1, 0),
+                    new Point(EXTENT + 1, EXTENT + 1),
+                    new Point(0, EXTENT + 1),
+                    new Point(0, 0),
+                ],
+            ];
+        },
     };
 })();
 
@@ -98,7 +114,7 @@ class Tile {
     uses: number;
     tileSize: number;
     tileZoom: number;
-    buckets: {[_: string]: Bucket};
+    buckets: { [_: string]: Bucket };
     latestFeatureIndex: ?FeatureIndex;
     latestRawTileData: ?ArrayBuffer;
     imageAtlas: ?ImageAtlas;
@@ -117,7 +133,7 @@ class Tile {
     showCollisionBoxes: boolean;
     placementSource: any;
     actor: ?Actor;
-    vtLayers: {[_: string]: VectorTileLayer};
+    vtLayers: { [_: string]: VectorTileLayer };
     isSymbolTile: ?boolean;
     isRaster: ?boolean;
     _tileTransform: TileTransform;
@@ -162,7 +178,13 @@ class Tile {
      * @param size
      * @private
      */
-    constructor(tileID: OverscaledTileID, size: number, tileZoom: number, painter: any, isRaster?: boolean) {
+    constructor(
+        tileID: OverscaledTileID,
+        size: number,
+        tileZoom: number,
+        painter: any,
+        isRaster?: boolean
+    ) {
         this.tileID = tileID;
         this.uid = uniqueId();
         this.uses = 0;
@@ -182,7 +204,7 @@ class Tile {
         // serving expired tiles.
         this.expiredRequestCount = 0;
 
-        this.state = 'loading';
+        this.state = "loading";
 
         if (painter && painter.transform) {
             this.projection = painter.transform.projection;
@@ -198,12 +220,19 @@ class Tile {
     }
 
     wasRequested(): boolean {
-        return this.state === 'errored' || this.state === 'loaded' || this.state === 'reloading';
+        return (
+            this.state === "errored" ||
+            this.state === "loaded" ||
+            this.state === "reloading"
+        );
     }
 
     get tileTransform(): TileTransform {
         if (!this._tileTransform) {
-            this._tileTransform = tileTransform(this.tileID.canonical, this.projection);
+            this._tileTransform = tileTransform(
+                this.tileID.canonical,
+                this.projection
+            );
         }
         return this._tileTransform;
     }
@@ -218,10 +247,14 @@ class Tile {
      * @returns {undefined}
      * @private
      */
-    loadVectorData(data: ?WorkerTileResult, painter: any, justReloaded: ?boolean) {
+    loadVectorData(
+        data: ?WorkerTileResult,
+        painter: any,
+        justReloaded: ?boolean
+    ) {
         this.unloadVectorData();
 
-        this.state = 'loaded';
+        this.state = "loaded";
 
         // empty GeoJSON tile
         if (!data) {
@@ -275,7 +308,10 @@ class Tile {
         this.queryPadding = 0;
         for (const id in this.buckets) {
             const bucket = this.buckets[id];
-            this.queryPadding = Math.max(this.queryPadding, painter.style.getLayer(id).queryRadius(bucket));
+            this.queryPadding = Math.max(
+                this.queryPadding,
+                painter.style.getLayer(id).queryRadius(bucket)
+            );
         }
 
         if (data.imageAtlas) {
@@ -364,7 +400,7 @@ class Tile {
             }
         });
         this.latestFeatureIndex = null;
-        this.state = 'unloaded';
+        this.state = "unloaded";
     }
 
     getBucket(layer: StyleLayer): Bucket {
@@ -381,46 +417,96 @@ class Tile {
 
         const gl = context.gl;
         if (this.imageAtlas && !this.imageAtlas.uploaded) {
-            this.imageAtlasTexture = new Texture(context, this.imageAtlas.image, gl.RGBA);
+            this.imageAtlasTexture = new Texture(
+                context,
+                this.imageAtlas.image,
+                gl.RGBA
+            );
             this.imageAtlas.uploaded = true;
         }
 
         if (this.glyphAtlasImage) {
-            this.glyphAtlasTexture = new Texture(context, this.glyphAtlasImage, gl.ALPHA);
+            this.glyphAtlasTexture = new Texture(
+                context,
+                this.glyphAtlasImage,
+                gl.ALPHA
+            );
             this.glyphAtlasImage = null;
         }
 
         if (this.lineAtlas && !this.lineAtlas.uploaded) {
-            this.lineAtlasTexture = new Texture(context, this.lineAtlas.image, gl.ALPHA);
+            this.lineAtlasTexture = new Texture(
+                context,
+                this.lineAtlas.image,
+                gl.ALPHA
+            );
             this.lineAtlas.uploaded = true;
         }
     }
 
     prepare(imageManager: ImageManager) {
         if (this.imageAtlas) {
-            this.imageAtlas.patchUpdatedImages(imageManager, this.imageAtlasTexture);
+            this.imageAtlas.patchUpdatedImages(
+                imageManager,
+                this.imageAtlasTexture
+            );
         }
+    }
+
+    // Find raster value at a given location
+    queryRasterValues(
+        layers: { [_: string]: StyleLayer },
+        serializedLayers: { [string]: Object },
+        sourceFeatureState: SourceFeatureState,
+        tileResult: TilespaceQueryGeometry,
+        params: {
+            filter: FilterSpecification,
+            layers: Array<string>,
+            availableImages: Array<string>,
+        },
+        transform: Transform,
+        pixelPosMatrix: Float32Array,
+        visualizeQueryGeometry: boolean
+    ): Color {
+        console.log("queryRasterValues", tileResult, pixelPosMatrix);
+
+        // const texturePos = pixelPosMatrix.getTexturePos()
+
+        // const color = tileResult.tile.texture.readPixels(texturePos.x, texturePos.y, 1, 1, type, ???)
+
+        // return color
     }
 
     // Queries non-symbol features rendered for this tile.
     // Symbol features are queried globally
-    queryRenderedFeatures(layers: {[_: string]: StyleLayer},
-                          serializedLayers: {[string]: Object},
-                          sourceFeatureState: SourceFeatureState,
-                          tileResult: TilespaceQueryGeometry,
-                          params: { filter: FilterSpecification, layers: Array<string>, availableImages: Array<string> },
-                          transform: Transform,
-                          pixelPosMatrix: Float32Array,
-                          visualizeQueryGeometry: boolean): QueryResult {
+    queryRenderedFeatures(
+        layers: { [_: string]: StyleLayer },
+        serializedLayers: { [string]: Object },
+        sourceFeatureState: SourceFeatureState,
+        tileResult: TilespaceQueryGeometry,
+        params: {
+            filter: FilterSpecification,
+            layers: Array<string>,
+            availableImages: Array<string>,
+        },
+        transform: Transform,
+        pixelPosMatrix: Float32Array,
+        visualizeQueryGeometry: boolean
+    ): QueryResult {
         Debug.run(() => {
             if (visualizeQueryGeometry) {
                 let geometryViz = this.queryGeometryDebugViz;
                 let boundsViz = this.queryBoundsDebugViz;
                 if (!geometryViz) {
-                    geometryViz = this.queryGeometryDebugViz = new TileSpaceDebugBuffer(this.tileSize);
+                    geometryViz = this.queryGeometryDebugViz = new TileSpaceDebugBuffer(
+                        this.tileSize
+                    );
                 }
                 if (!boundsViz) {
-                    boundsViz = this.queryBoundsDebugViz = new TileSpaceDebugBuffer(this.tileSize, Color.blue);
+                    boundsViz = this.queryBoundsDebugViz = new TileSpaceDebugBuffer(
+                        this.tileSize,
+                        Color.blue
+                    );
                 }
 
                 geometryViz.addPoints(tileResult.tilespaceGeometry);
@@ -431,13 +517,18 @@ class Tile {
         if (!this.latestFeatureIndex || !this.latestFeatureIndex.rawTileData)
             return {};
 
-        return this.latestFeatureIndex.query({
-            tileResult,
-            pixelPosMatrix,
-            transform,
-            params,
-            tileTransform: this.tileTransform
-        }, layers, serializedLayers, sourceFeatureState);
+        return this.latestFeatureIndex.query(
+            {
+                tileResult,
+                pixelPosMatrix,
+                transform,
+                params,
+                tileTransform: this.tileTransform,
+            },
+            layers,
+            serializedLayers,
+            sourceFeatureState
+        );
     }
 
     querySourceFeatures(result: Array<QueryFeature>, params: any) {
@@ -446,21 +537,33 @@ class Tile {
 
         const vtLayers = featureIndex.loadVTLayers();
 
-        const sourceLayer = params ? params.sourceLayer : '';
+        const sourceLayer = params ? params.sourceLayer : "";
         const layer = vtLayers._geojsonTileLayer || vtLayers[sourceLayer];
 
         if (!layer) return;
 
         const filter = featureFilter(params && params.filter);
-        const {z, x, y} = this.tileID.canonical;
-        const coord = {z, x, y};
+        const { z, x, y } = this.tileID.canonical;
+        const coord = { z, x, y };
 
         for (let i = 0; i < layer.length; i++) {
             const feature = layer.feature(i);
             if (filter.needGeometry) {
                 const evaluationFeature = toEvaluationFeature(feature, true);
-                if (!filter.filter(new EvaluationParameters(this.tileID.overscaledZ), evaluationFeature, this.tileID.canonical)) continue;
-            } else if (!filter.filter(new EvaluationParameters(this.tileID.overscaledZ), feature)) {
+                if (
+                    !filter.filter(
+                        new EvaluationParameters(this.tileID.overscaledZ),
+                        evaluationFeature,
+                        this.tileID.canonical
+                    )
+                )
+                    continue;
+            } else if (
+                !filter.filter(
+                    new EvaluationParameters(this.tileID.overscaledZ),
+                    feature
+                )
+            ) {
                 continue;
             }
             const id = featureIndex.getId(feature, sourceLayer);
@@ -472,11 +575,18 @@ class Tile {
     }
 
     hasData(): boolean {
-        return this.state === 'loaded' || this.state === 'reloading' || this.state === 'expired';
+        return (
+            this.state === "loaded" ||
+            this.state === "reloading" ||
+            this.state === "expired"
+        );
     }
 
     patternsLoaded(): boolean {
-        return !!this.imageAtlas && !!Object.keys(this.imageAtlas.patternPositions).length;
+        return (
+            !!this.imageAtlas &&
+            !!Object.keys(this.imageAtlas.patternPositions).length
+        );
     }
 
     setExpiryData(data: any) {
@@ -484,7 +594,8 @@ class Tile {
 
         if (data.cacheControl) {
             const parsedCC = parseCacheControl(data.cacheControl);
-            if (parsedCC['max-age']) this.expirationTime = Date.now() + parsedCC['max-age'] * 1000;
+            if (parsedCC["max-age"])
+                this.expirationTime = Date.now() + parsedCC["max-age"] * 1000;
         } else if (data.expires) {
             this.expirationTime = new Date(data.expires).getTime();
         }
@@ -501,7 +612,6 @@ class Tile {
                 // Expiring date is going backwards:
                 // fall back to exponential backoff
                 isExpired = true;
-
             } else {
                 const delta = this.expirationTime - prior;
 
@@ -509,19 +619,18 @@ class Tile {
                     // Server is serving the same expired resource over and over: fall
                     // back to exponential backoff.
                     isExpired = true;
-
                 } else {
                     // Assume that either the client or the server clock is wrong and
                     // try to interpolate a valid expiration date (from the client POV)
                     // observing a minimum timeout.
-                    this.expirationTime = now + Math.max(delta, CLOCK_SKEW_RETRY_TIMEOUT);
-
+                    this.expirationTime =
+                        now + Math.max(delta, CLOCK_SKEW_RETRY_TIMEOUT);
                 }
             }
 
             if (isExpired) {
                 this.expiredRequestCount++;
-                this.state = 'expired';
+                this.state = "expired";
             } else {
                 this.expiredRequestCount = 0;
             }
@@ -534,16 +643,21 @@ class Tile {
                 return 1000 * (1 << Math.min(this.expiredRequestCount - 1, 31));
             } else {
                 // Max value for `setTimeout` implementations is a 32 bit integer; cap this accordingly
-                return Math.min(this.expirationTime - new Date().getTime(), Math.pow(2, 31) - 1);
+                return Math.min(
+                    this.expirationTime - new Date().getTime(),
+                    Math.pow(2, 31) - 1
+                );
             }
         }
     }
 
     setFeatureState(states: LayerFeatureStates, painter: ?Painter) {
-        if (!this.latestFeatureIndex ||
+        if (
+            !this.latestFeatureIndex ||
             !this.latestFeatureIndex.rawTileData ||
             Object.keys(states).length === 0 ||
-            !painter) {
+            !painter
+        ) {
             return;
         }
 
@@ -555,23 +669,49 @@ class Tile {
 
             const bucket = this.buckets[id];
             // Buckets are grouped by common source-layer
-            const sourceLayerId = bucket.layers[0]['sourceLayer'] || '_geojsonTileLayer';
+            const sourceLayerId =
+                bucket.layers[0]["sourceLayer"] || "_geojsonTileLayer";
             const sourceLayer = vtLayers[sourceLayerId];
             const sourceLayerStates = states[sourceLayerId];
-            if (!sourceLayer || !sourceLayerStates || Object.keys(sourceLayerStates).length === 0) continue;
+            if (
+                !sourceLayer ||
+                !sourceLayerStates ||
+                Object.keys(sourceLayerStates).length === 0
+            )
+                continue;
 
             // $FlowFixMe[incompatible-type] Flow can't interpret ImagePosition as SpritePosition for some reason here
-            const imagePositions: SpritePositions = (this.imageAtlas && this.imageAtlas.patternPositions) || {};
-            bucket.update(sourceLayerStates, sourceLayer, availableImages, imagePositions);
+            const imagePositions: SpritePositions =
+                (this.imageAtlas && this.imageAtlas.patternPositions) || {};
+            bucket.update(
+                sourceLayerStates,
+                sourceLayer,
+                availableImages,
+                imagePositions
+            );
             if (bucket instanceof LineBucket || bucket instanceof FillBucket) {
-                const sourceCache = painter.style._getSourceCache(bucket.layers[0].source);
-                if (painter._terrain && painter._terrain.enabled && sourceCache && bucket.programConfigurations.needsUpload) {
-                    painter._terrain._clearRenderCacheForTile(sourceCache.id, this.tileID);
+                const sourceCache = painter.style._getSourceCache(
+                    bucket.layers[0].source
+                );
+                if (
+                    painter._terrain &&
+                    painter._terrain.enabled &&
+                    sourceCache &&
+                    bucket.programConfigurations.needsUpload
+                ) {
+                    painter._terrain._clearRenderCacheForTile(
+                        sourceCache.id,
+                        this.tileID
+                    );
                 }
             }
-            const layer = painter && painter.style && painter.style.getLayer(id);
+            const layer =
+                painter && painter.style && painter.style.getLayer(id);
             if (layer) {
-                this.queryPadding = Math.max(this.queryPadding, layer.queryRadius(bucket));
+                this.queryPadding = Math.max(
+                    this.queryPadding,
+                    layer.queryRadius(bucket)
+                );
             }
         }
     }
@@ -581,7 +721,10 @@ class Tile {
     }
 
     symbolFadeFinished(): boolean {
-        return !this.symbolFadeHoldUntil || this.symbolFadeHoldUntil < browser.now();
+        return (
+            !this.symbolFadeHoldUntil ||
+            this.symbolFadeHoldUntil < browser.now()
+        );
     }
 
     clearFadeHold() {
@@ -597,13 +740,20 @@ class Tile {
         const gl = context.gl;
         this.texture = painter.getTileTexture(img.width);
         if (this.texture) {
-            this.texture.update(img, {useMipmap: true});
+            this.texture.update(img, { useMipmap: true });
         } else {
-            this.texture = new Texture(context, img, gl.RGBA, {useMipmap: true});
+            this.texture = new Texture(context, img, gl.RGBA, {
+                useMipmap: true,
+            });
             this.texture.bind(gl.LINEAR, gl.CLAMP_TO_EDGE);
 
             if (context.extTextureFilterAnisotropic) {
-                gl.texParameterf(gl.TEXTURE_2D, context.extTextureFilterAnisotropic.TEXTURE_MAX_ANISOTROPY_EXT, context.extTextureFilterAnisotropicMax);
+                gl.texParameterf(
+                    gl.TEXTURE_2D,
+                    context.extTextureFilterAnisotropic
+                        .TEXTURE_MAX_ANISOTROPY_EXT,
+                    context.extTextureFilterAnisotropicMax
+                );
             }
         }
     }
@@ -642,32 +792,58 @@ class Tile {
     }
 
     _makeDebugTileBoundsBuffers(context: Context, projection: Projection) {
-        if (!projection || projection.name === 'mercator' || this._tileDebugBuffer) return;
+        if (
+            !projection ||
+            projection.name === "mercator" ||
+            this._tileDebugBuffer
+        )
+            return;
 
         // reproject tile outline with adaptive resampling
-        const boundsLine = loadGeometry(BOUNDS_FEATURE, this.tileID.canonical, this.tileTransform)[0];
+        const boundsLine = loadGeometry(
+            BOUNDS_FEATURE,
+            this.tileID.canonical,
+            this.tileTransform
+        )[0];
 
         // generate vertices for debugging tile boundaries
         const debugVertices = new PosArray();
         const debugIndices = new LineStripIndexArray();
 
         for (let i = 0; i < boundsLine.length; i++) {
-            const {x, y} = boundsLine[i];
+            const { x, y } = boundsLine[i];
             debugVertices.emplaceBack(x, y);
             debugIndices.emplaceBack(i);
         }
         debugIndices.emplaceBack(0);
 
         this._tileDebugIndexBuffer = context.createIndexBuffer(debugIndices);
-        this._tileDebugBuffer = context.createVertexBuffer(debugVertices, posAttributes.members);
-        this._tileDebugSegments = SegmentVector.simpleSegment(0, 0, debugVertices.length, debugIndices.length);
+        this._tileDebugBuffer = context.createVertexBuffer(
+            debugVertices,
+            posAttributes.members
+        );
+        this._tileDebugSegments = SegmentVector.simpleSegment(
+            0,
+            0,
+            debugVertices.length,
+            debugIndices.length
+        );
     }
 
     _makeTileBoundsBuffers(context: Context, projection: Projection) {
-        if (this._tileBoundsBuffer || !projection || projection.name === 'mercator') return;
+        if (
+            this._tileBoundsBuffer ||
+            !projection ||
+            projection.name === "mercator"
+        )
+            return;
 
         // reproject tile outline with adaptive resampling
-        const boundsLine = loadGeometry(BOUNDS_FEATURE, this.tileID.canonical, this.tileTransform)[0];
+        const boundsLine = loadGeometry(
+            BOUNDS_FEATURE,
+            this.tileID.canonical,
+            this.tileTransform
+        )[0];
 
         let boundsVertices, boundsIndices;
         if (this.isRaster) {
@@ -675,27 +851,44 @@ class Tile {
             const mesh = getTileMesh(this.tileID.canonical, projection);
             boundsVertices = mesh.vertices;
             boundsIndices = mesh.indices;
-
         } else {
             // for vector tiles, generate an Earcut triangulation of the outline
             boundsVertices = new TileBoundsArray();
             boundsIndices = new TriangleIndexArray();
 
-            for (const {x, y} of boundsLine) {
+            for (const { x, y } of boundsLine) {
                 boundsVertices.emplaceBack(x, y, 0, 0);
             }
             const indices = earcut(boundsVertices.int16, undefined, 4);
             for (let i = 0; i < indices.length; i += 3) {
-                boundsIndices.emplaceBack(indices[i], indices[i + 1], indices[i + 2]);
+                boundsIndices.emplaceBack(
+                    indices[i],
+                    indices[i + 1],
+                    indices[i + 2]
+                );
             }
         }
-        this._tileBoundsBuffer = context.createVertexBuffer(boundsVertices, boundsAttributes.members);
+        this._tileBoundsBuffer = context.createVertexBuffer(
+            boundsVertices,
+            boundsAttributes.members
+        );
         this._tileBoundsIndexBuffer = context.createIndexBuffer(boundsIndices);
-        this._tileBoundsSegments = SegmentVector.simpleSegment(0, 0, boundsVertices.length, boundsIndices.length);
+        this._tileBoundsSegments = SegmentVector.simpleSegment(
+            0,
+            0,
+            boundsVertices.length,
+            boundsIndices.length
+        );
     }
 
     _makeGlobeTileDebugBuffers(context: Context, projection: Projection) {
-        if (this._globeTileDebugBorderBuffer || this._globeTileDebugTextBuffer || !projection || projection.name !== 'globe') return;
+        if (
+            this._globeTileDebugBorderBuffer ||
+            this._globeTileDebugTextBuffer ||
+            !projection ||
+            projection.name !== "globe"
+        )
+            return;
 
         const id = this.tileID.canonical;
         const bounds = globeTileBounds(id);
@@ -705,12 +898,22 @@ class Tile {
         this._makeGlobeTileDebugTextBuffer(context, id, normalizationMatrix);
     }
 
-    _makeGlobeTileDebugBorderBuffer(context: Context, id: CanonicalTileID, normalizationMatrix: Float64Array) {
+    _makeGlobeTileDebugBorderBuffer(
+        context: Context,
+        id: CanonicalTileID,
+        normalizationMatrix: Float64Array
+    ) {
         const vertices = new PosArray();
         const indices = new LineStripIndexArray();
         const extraGlobe = new PosGlobeExtArray();
 
-        const addLine = (sx: number, sy: number, ex: number, ey: number, pointCount: number) => {
+        const addLine = (
+            sx: number,
+            sy: number,
+            ex: number,
+            ey: number,
+            pointCount: number
+        ) => {
             const stepX = (ex - sx) / (pointCount - 1);
             const stepY = (ey - sy) / (pointCount - 1);
 
@@ -738,12 +941,27 @@ class Tile {
         addLine(0, e, 0, 0, 16);
 
         this._tileDebugIndexBuffer = context.createIndexBuffer(indices);
-        this._tileDebugBuffer = context.createVertexBuffer(vertices, posAttributes.members);
-        this._globeTileDebugBorderBuffer = context.createVertexBuffer(extraGlobe, posAttributesGlobeExt.members);
-        this._tileDebugSegments = SegmentVector.simpleSegment(0, 0, vertices.length, indices.length);
+        this._tileDebugBuffer = context.createVertexBuffer(
+            vertices,
+            posAttributes.members
+        );
+        this._globeTileDebugBorderBuffer = context.createVertexBuffer(
+            extraGlobe,
+            posAttributesGlobeExt.members
+        );
+        this._tileDebugSegments = SegmentVector.simpleSegment(
+            0,
+            0,
+            vertices.length,
+            indices.length
+        );
     }
 
-    _makeGlobeTileDebugTextBuffer(context: Context, id: CanonicalTileID, normalizationMatrix: Float64Array) {
+    _makeGlobeTileDebugTextBuffer(
+        context: Context,
+        id: CanonicalTileID,
+        normalizationMatrix: Float64Array
+    ) {
         const SEGMENTS = 4;
         const numVertices = SEGMENTS + 1;
         const step = EXTENT / SEGMENTS;
@@ -792,9 +1010,20 @@ class Tile {
         }
 
         this._tileDebugTextIndexBuffer = context.createIndexBuffer(indices);
-        this._tileDebugTextBuffer = context.createVertexBuffer(vertices, posAttributes.members);
-        this._globeTileDebugTextBuffer = context.createVertexBuffer(extraGlobe, posAttributesGlobeExt.members);
-        this._tileDebugTextSegments = SegmentVector.simpleSegment(0, 0, totalVertices, totalTriangles);
+        this._tileDebugTextBuffer = context.createVertexBuffer(
+            vertices,
+            posAttributes.members
+        );
+        this._globeTileDebugTextBuffer = context.createVertexBuffer(
+            extraGlobe,
+            posAttributesGlobeExt.members
+        );
+        this._tileDebugTextSegments = SegmentVector.simpleSegment(
+            0,
+            0,
+            totalVertices,
+            totalTriangles
+        );
     }
 }
 
